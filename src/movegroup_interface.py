@@ -279,7 +279,7 @@ class PandaMoveGroupInterface:
         self._arm_group.stop()
         self._arm_group.clear_pose_targets()
 
-    def pick(self, position, wait = False):
+    def pick(self, position, speed, wait = False):
         currpos = self._arm_group.get_current_pose().pose
         xdiff = position[0] - currpos.position.x
         ydiff = position[1] - currpos.position.y
@@ -290,7 +290,7 @@ class PandaMoveGroupInterface:
         waypoint = []
         waypoint.append(copy.deepcopy(currpos))
 
-        plan, fraction = self._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = self._arm_group.compute_cartesian_path(waypoint, speed, 0.0)
         self.execute_plan(plan)
 
 

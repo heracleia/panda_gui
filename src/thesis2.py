@@ -94,6 +94,22 @@ class Ui_MainWindow(object):
         self.pushButton_9.clicked.connect(self.pickobject)
         self.pushButton_12 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_12.setObjectName("pushButton_12")
+        self.splitter_3 = QtWidgets.QSplitter(self.centralwidget)
+        self.splitter_3.setGeometry(QtCore.QRect(110, 480, 621, 21))
+        self.splitter_3.setOrientation(QtCore.Qt.Horizontal)
+        self.splitter_3.setObjectName("splitter_3")
+        self.radioButton = QtWidgets.QRadioButton(self.splitter_3)
+        self.radioButton.setChecked(True)
+        self.radioButton.setObjectName("radioButton")
+        self.buttonGroup = QtWidgets.QButtonGroup(MainWindow)
+        self.buttonGroup.setObjectName("buttonGroup")
+        self.buttonGroup.addButton(self.radioButton)
+        self.radioButton_2 = QtWidgets.QRadioButton(self.splitter_3)
+        self.radioButton_2.setObjectName("radioButton_2")
+        self.buttonGroup.addButton(self.radioButton_2)
+        self.radioButton_3 = QtWidgets.QRadioButton(self.splitter_3)
+        self.radioButton_3.setObjectName("radioButton_3")
+        self.buttonGroup.addButton(self.radioButton_3)
         MainWindow.setCentralWidget(self.centralwidget)
         self.panda = PandaMoveGroupInterface()
 
@@ -120,6 +136,10 @@ class Ui_MainWindow(object):
         self.pushButton_8.setText(_translate("MainWindow", "Add Scene"))
         self.pushButton_9.setText(_translate("MainWindow", "Pick Selected Object"))
         self.pushButton_12.setText(_translate("MainWindow", "Place"))
+        self.radioButton.setText(_translate("MainWindow", "Slow"))
+        self.radioButton_2.setText(_translate("MainWindow", "Medium"))
+        self.radioButton_3.setText(_translate("MainWindow", "Fast"))
+
 
     def homebutton(self):
         self.panda.move_to_neutral()
@@ -137,57 +157,63 @@ class Ui_MainWindow(object):
         self.panda.hor_gripper()
 
     def moveup(self):
+        self.setspeed()
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
         wpose.position.z += 0.1  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
         self.panda.execute_plan(plan)
 
     def movedown(self):
+        self.setspeed()
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
         wpose.position.z -= 0.1  # move down (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
         self.panda.execute_plan(plan)
 
     def moveright(self):
+        self.setspeed()
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
         wpose.position.y += 0.1  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
         self.panda.execute_plan(plan)
 
     def moveleft(self):
+        self.setspeed()
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
         wpose.position.y -= 0.1  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
         self.panda.execute_plan(plan)
 
     def moveforward(self):
+        self.setspeed()
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
         wpose.position.x += 0.1  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
         self.panda.execute_plan(plan)
 
     def movebackward(self):
+        self.setspeed()
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
         wpose.position.x -= 0.1  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
         self.panda.execute_plan(plan)
 
     def addscene(self):
@@ -211,9 +237,21 @@ class Ui_MainWindow(object):
             rospy.loginfo("Could not add box1 to scene!!")
 
     def pickobject(self):
+        self.setspeed()
         self.panda.open_gripper(wait = True)
         self.panda.hor_gripper(wait = True)
-        self.panda.pick([0.5, 0.0, 0.5])
+        self.panda.pick([0.5, 0.0, 0.5], self.speed)
+
+    def setspeed(self):
+        if self.radioButton.isChecked():
+            rbchoice = 0.01
+        elif self.radioButton_2.isChecked():
+            rbchoice = 0.02
+        elif self.radioButton_3.isChecked():
+            rbchoice = 0.03
+        else:
+            rospy.loginfo("Invalid panda speed set!!")
+        self.speed = rbchoice
 
 if __name__ == "__main__":
     import sys
