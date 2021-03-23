@@ -253,7 +253,7 @@ class PandaMoveGroupInterface:
 
     def hor_gripper(self, wait = False):
         currpos = self._arm_group.get_current_pose().pose
-        quat = quaternion_from_euler(0.0, numpy.deg2rad(90.0), 0.0)
+        quat = quaternion_from_euler(0.0, -numpy.deg2rad(90.0), 0.0)
         currpos.orientation.x = quat[0]
         currpos.orientation.y = quat[1]
         currpos.orientation.z = quat[2]
@@ -267,7 +267,7 @@ class PandaMoveGroupInterface:
 
     def vert_gripper(self, wait = False):
         currpos = self._arm_group.get_current_pose().pose
-        quat = quaternion_from_euler(0.0, 0.0, 0.0)
+        quat = quaternion_from_euler(0.0, numpy.deg2rad(180.0), 0.0)
         currpos.orientation.x = quat[0]
         currpos.orientation.y = quat[1]
         currpos.orientation.z = quat[2]

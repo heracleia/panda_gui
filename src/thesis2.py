@@ -88,7 +88,7 @@ class Ui_MainWindow(object):
         self.splitter_2.setObjectName("splitter_2")
         self.pushButton_8 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_8.setObjectName("pushButton_8")
-        self.pushButton_8.clicked.connect(self.addscene)
+        self.pushButton_8.clicked.connect(self.loadconstraints)
         self.pushButton_9 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_9.setObjectName("pushButton_9")
         self.pushButton_9.clicked.connect(self.pickobject)
@@ -133,7 +133,7 @@ class Ui_MainWindow(object):
         self.pushButton_14.setText(_translate("MainWindow", "Vertical Gripper"))
         self.pushButton_6.setText(_translate("MainWindow", "Open Gripper"))
         self.pushButton_7.setText(_translate("MainWindow", "Close Gripper"))
-        self.pushButton_8.setText(_translate("MainWindow", "Add Scene"))
+        self.pushButton_8.setText(_translate("MainWindow", "Load Constraints"))
         self.pushButton_9.setText(_translate("MainWindow", "Pick Selected Object"))
         self.pushButton_12.setText(_translate("MainWindow", "Place"))
         self.radioButton.setText(_translate("MainWindow", "Slow"))
@@ -142,7 +142,8 @@ class Ui_MainWindow(object):
 
 
     def homebutton(self):
-        self.panda.move_to_neutral()
+        homejointpose = [2.8970, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+        self.panda.go_to_joint_positions(homejointpose)
 
     def grasp(self):
         self.panda.close_gripper()
@@ -217,18 +218,17 @@ class Ui_MainWindow(object):
         self.panda.execute_plan(plan)
 
     def addscene(self):
-        scene = ExtendedPlanningSceneInterface()
         posebox1 = utils.create_pose_stamped_msg([0.5, 0.0, 0.2], quaternion_from_euler(0.0, 0.0, 0.0))
         posebox2 = utils.create_pose_stamped_msg([0.0, 0.5, 0.2], quaternion_from_euler(0.0, 0.0, 0.0))
         objectpose = utils.create_pose_stamped_msg([0.5, 0.0, 0.5], quaternion_from_euler(0.0, 0.0, 0.0))
         sizebox1 = [0.2, 0.4, 0.4]
         sizebox2 = [0.4, 0.2, 0.4]
         sizeobject = [0.02, 0.02, 0.2]
-        stat = scene.add_box("box1", posebox1, sizebox1)
+        stat = self.scene.add_box("box1", posebox1, sizebox1)
         if(stat):
-            stat2 = scene.add_box("box2", posebox2, sizebox2)
+            stat2 = self.scene.add_box("box2", posebox2, sizebox2)
             if(stat2):
-                stat3 = scene.add_box("object1", objectpose, sizeobject)
+                stat3 = self.scene.add_box("object1", objectpose, sizeobject)
                 if(stat3 == False):
                     rospy.loginfo("Could not add object to scene!!")
             else:
@@ -252,6 +252,20 @@ class Ui_MainWindow(object):
         else:
             rospy.loginfo("Invalid panda speed set!!")
         self.speed = rbchoice
+
+    def loadconstraints(self):
+        self.scene = ExtendedPlanningSceneInterface()
+        posepole1 = utils.create_pose_stamped_msg([-0.03, 0.3, 0.0], quaternion_from_euler(0.0, 0.0, 0.0))
+        posepole2 = utils.create_pose_stamped_msg([-0.03, -0.3, 0.0], quaternion_from_euler(0.0, 0.0, 0.0))
+        sizepole1 = [0.02, 0.02, 3.0]
+        sizepole2 = [0.02, 0.02, 3.0]
+        p1 = self.scene.add_box("pole1", posepole1, sizepole1)
+        if(p1):
+            p2 = self.scene.add_box("pole2", posepole2, sizepole2)
+            if(not p2):
+                rospy.loginfo("Constraint pole 2 could not be added!!")
+        else:
+            rospy.loginfo("Constraint pole 1 could not be added!!")
 
 if __name__ == "__main__":
     import sys
