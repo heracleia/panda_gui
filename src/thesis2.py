@@ -10,17 +10,88 @@
 import sys
 import copy
 import rospy
+import numpy as np
+import threading
+from cv_bridge import CvBridge
+from darknet_ros_msgs.msg import BoundingBoxes
+import pyrealsense2 as rs
+from sensor_msgs.msg import Image
 import moveit_commander
 import moveit_msgs.msg
 import geometry_msgs.msg
 from math import pi
 from std_msgs.msg import String
+from darknet_ros_msgs.msg import BoundingBoxes
 from moveit_commander.conversions import pose_to_list
 from PyQt5 import QtCore, QtGui, QtWidgets
 from movegroup_interface import PandaMoveGroupInterface
 from extended_planning_scene_interface import ExtendedPlanningSceneInterface
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import utils
+
+class YoloNode:
+    def __init__(self, camera):
+        self.name = [None] * 5
+        self.pixelxmid = [0] * 5
+        self.pixelymid = [0] * 5
+        self.coord = [[0.0] * 3 for i in range(5)]
+        self.tfcoord = []
+        self.camera = camera
+
+
+    def callback(self, data):
+        boundingboxes = data.bounding_boxes
+
+        for i in range(len(boundingboxes)):
+             self.name[i] = boundingboxes[i].Class
+             self.pixelxmid[i] = int((boundingboxes[i].xmin + boundingboxes[i].xmax) / 2)
+             self.pixelymid[i] = int((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
+        self.resolveCoord()
+        # self.printCoord()
+
+    def resolveCoord(self):
+        for i in range(len(self.name)):
+            if self.name[i] is not None:
+                point = self.camera.deproject(self.pixelxmid[i], self.pixelymid[i])
+                self.coord[i] = point
+
+    def printCoord(self):
+        for i in range(len(self.name)):
+            if self.name[i] is not None:
+                print(self.name[i] + ": " + " x: " + str(self.coord[i][0]) + " y: " + str(self.coord[i][1]) + " z: " + str(self.coord[i][2]))
+
+
+
+
+
+class RealSenseNode:
+    def __init__(self):
+        self.pub = rospy.Publisher('/camera/color/image_raw', Image, queue_size = 1)
+        self.pipeline = rs.pipeline()
+        self.config = rs.config()
+        self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+        self.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        self.align = rs.align(rs.stream.color)
+        self.profile = self.pipeline.start(self.config)
+
+    def publisher(self):
+        while not rospy.is_shutdown():
+            self.frames = self.pipeline.wait_for_frames()
+            self.frames = self.align.process(self.frames)
+            self.color_frame = self.frames.get_color_frame()
+            self.depth_frame = self.frames.get_depth_frame()
+            npcolor = np.asanyarray(self.color_frame.get_data())
+            bridge = CvBridge()
+            image_message = bridge.cv2_to_imgmsg(npcolor, encoding="bgr8")
+            self.pub.publish(image_message)
+
+    def deproject(self, x, y):
+        color_intrin = self.color_frame.profile.as_video_stream_profile().intrinsics
+        udist = self.depth_frame.get_distance(x, y)
+        point1 = rs.rs2_deproject_pixel_to_point(color_intrin, [x, y], udist)
+        return point1
+
+
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -55,11 +126,11 @@ class Ui_MainWindow(object):
         self.gridLayout.addWidget(self.pushButton_2, 2, 1, 1, 1)
         self.pushButton_10 = QtWidgets.QPushButton(self.layoutWidget)
         self.pushButton_10.setObjectName("pushButton_10")
-        self.pushButton_10.clicked.connect(self.moveforward)
+        self.pushButton_10.clicked.connect(self.movebackward)
         self.gridLayout.addWidget(self.pushButton_10, 0, 2, 1, 1)
         self.pushButton_11 = QtWidgets.QPushButton(self.layoutWidget)
         self.pushButton_11.setObjectName("pushButton_11")
-        self.pushButton_11.clicked.connect(self.movebackward)
+        self.pushButton_11.clicked.connect(self.moveforward)
         self.gridLayout.addWidget(self.pushButton_11, 2, 0, 1, 1)
         self.splitter = QtWidgets.QSplitter(self.centralwidget)
         self.splitter.setGeometry(QtCore.QRect(70, 170, 231, 171))
@@ -67,9 +138,10 @@ class Ui_MainWindow(object):
         self.splitter.setObjectName("splitter")
         self.comboBox = QtWidgets.QComboBox(self.splitter)
         self.comboBox.setObjectName("comboBox")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
+        # self.comboBox.addItem("")
+        # self.comboBox.addItem("")
+        # self.comboBox.addItem("")
+        self.comboBox.setEnabled(False)
         self.pushButton_13 = QtWidgets.QPushButton(self.splitter)
         self.pushButton_13.setObjectName("pushButton_13")
         self.pushButton_13.clicked.connect(self.hor_orient)
@@ -88,12 +160,13 @@ class Ui_MainWindow(object):
         self.splitter_2.setObjectName("splitter_2")
         self.pushButton_8 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_8.setObjectName("pushButton_8")
-        self.pushButton_8.clicked.connect(self.loadconstraints)
+        self.pushButton_8.clicked.connect(self.loadobjects)
         self.pushButton_9 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_9.setObjectName("pushButton_9")
         self.pushButton_9.clicked.connect(self.pickobject)
         self.pushButton_12 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_12.setObjectName("pushButton_12")
+        # self.pushButton_12.clicked.connect(self.gethomejointvalues)
         self.splitter_3 = QtWidgets.QSplitter(self.centralwidget)
         self.splitter_3.setGeometry(QtCore.QRect(110, 480, 621, 21))
         self.splitter_3.setOrientation(QtCore.Qt.Horizontal)
@@ -126,14 +199,14 @@ class Ui_MainWindow(object):
         self.pushButton_2.setText(_translate("MainWindow", "DOWN"))
         self.pushButton_10.setText(_translate("MainWindow", "STRAIGHT"))
         self.pushButton_11.setText(_translate("MainWindow", "BACK"))
-        self.comboBox.setItemText(0, _translate("MainWindow", "Object 1"))
-        self.comboBox.setItemText(1, _translate("MainWindow", "Object 2"))
-        self.comboBox.setItemText(2, _translate("MainWindow", "Object 3"))
+        # self.comboBox.setItemText(0, _translate("MainWindow", "Object 1"))
+        # self.comboBox.setItemText(1, _translate("MainWindow", "Object 2"))
+        # self.comboBox.setItemText(2, _translate("MainWindow", "Object 3"))
         self.pushButton_13.setText(_translate("MainWindow", "Horizontal Gripper"))
         self.pushButton_14.setText(_translate("MainWindow", "Vertical Gripper"))
         self.pushButton_6.setText(_translate("MainWindow", "Open Gripper"))
         self.pushButton_7.setText(_translate("MainWindow", "Close Gripper"))
-        self.pushButton_8.setText(_translate("MainWindow", "Load Constraints"))
+        self.pushButton_8.setText(_translate("MainWindow", "Load Objects"))
         self.pushButton_9.setText(_translate("MainWindow", "Pick Selected Object"))
         self.pushButton_12.setText(_translate("MainWindow", "Place"))
         self.radioButton.setText(_translate("MainWindow", "Slow"))
@@ -142,8 +215,12 @@ class Ui_MainWindow(object):
 
 
     def homebutton(self):
-        homejointpose = [2.8970, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
-        self.panda.go_to_joint_positions(homejointpose)
+        jvposition = [1.634550363302231, -1.3411260843149029, 0.9899407725726057, -2.554722122957723, 0.9527293026895343,
+                      1.4631178311427895, -0.26157099916206467]
+
+        self.panda._arm_group.go(jvposition, wait = True)
+        self.panda._arm_group.stop()
+
 
     def grasp(self):
         self.panda.close_gripper()
@@ -236,6 +313,19 @@ class Ui_MainWindow(object):
         else:
             rospy.loginfo("Could not add box1 to scene!!")
 
+    def loadobjects(self):
+        self.comboBox.setEnabled(True)
+        self.comboBox.addItems(self.yolonode.name)
+        self.pushButton_8.setEnabled(False)
+
+
+    def scanobjects(self):
+        self.camera = RealSenseNode()
+        self.yolonode = YoloNode(self.camera)
+        rospy.Subscriber("/darknet_ros/bounding_boxes", BoundingBoxes, self.yolonode.callback)
+        while not rospy.is_shutdown():
+            self.camera.publisher()
+
     def pickobject(self):
         self.setspeed()
         self.panda.open_gripper(wait = True)
@@ -267,6 +357,13 @@ class Ui_MainWindow(object):
         else:
             rospy.loginfo("Constraint pole 1 could not be added!!")
 
+    def gethomejointvalues(self):
+        joint_value = self.panda._arm_group.get_current_joint_values()
+        print(joint_value)
+
+
+
+
 if __name__ == "__main__":
     import sys
     app = QtWidgets.QApplication(sys.argv)
@@ -274,4 +371,7 @@ if __name__ == "__main__":
     ui = Ui_MainWindow()
     ui.setupUi(MainWindow)
     MainWindow.show()
+    x = threading.Thread(target = ui.scanobjects)
+    x.setDaemon(True)
+    x.start()
     sys.exit(app.exec_())

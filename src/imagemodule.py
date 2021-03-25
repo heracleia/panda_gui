@@ -10,29 +10,34 @@ from sensor_msgs.msg import Image
 
 class YoloNode:
     def __init__(self, camera):
-        self.name = []
-        self.pixelxmid = []
-        self.pixelymid = []
-        self.coord = []
+        self.name = [None] * 5
+        self.pixelxmid = [0] * 5
+        self.pixelymid = [0] * 5
+        self.coord = [[0.0] * 3 for i in range(5)]
+        self.tfcoord = []
         self.camera = camera
 
 
     def callback(self, data):
         boundingboxes = data.bounding_boxes
+
         for i in range(len(boundingboxes)):
-             self.name.append(boundingboxes[i].Class)
-             self.pixelxmid.append((boundingboxes[i].xmin + boundingboxes[i].xmax) / 2)
-             self.pixelymid.append((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
+             self.name[i] = boundingboxes[i].Class
+             self.pixelxmid[i] = int((boundingboxes[i].xmin + boundingboxes[i].xmax) / 2)
+             self.pixelymid[i] = int((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
         self.resolveCoord()
         self.printCoord()
 
     def resolveCoord(self):
         for i in range(len(self.name)):
-            self.coord.append(self.camera.deproject(self.pixelxmid[i], self.pixelymid[i]))
+            if self.name[i] is not None:
+                point = self.camera.deproject(self.pixelxmid[i], self.pixelymid[i])
+                self.coord[i] = point
 
     def printCoord(self):
         for i in range(len(self.name)):
-            print(self.name[i] + ": " + " x: " + str(self.coord[i][0]) + " y: " + str(self.coord[i][1]) + " z: " + str(self.coord[i][2]))
+            if self.name[i] is not None:
+                print(self.name[i] + ": " + " x: " + str(self.coord[i][0]) + " y: " + str(self.coord[i][1]) + " z: " + str(self.coord[i][2]))
 
 
 
