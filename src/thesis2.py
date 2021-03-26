@@ -28,6 +28,7 @@ from movegroup_interface import PandaMoveGroupInterface
 from extended_planning_scene_interface import ExtendedPlanningSceneInterface
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import utils
+import tfui
 
 class YoloNode:
     def __init__(self, camera):
@@ -59,6 +60,17 @@ class YoloNode:
         for i in range(len(self.name)):
             if self.name[i] is not None:
                 print(self.name[i] + ": " + " x: " + str(self.coord[i][0]) + " y: " + str(self.coord[i][1]) + " z: " + str(self.coord[i][2]))
+
+    def tf(self):
+        print(tfui.p, tfui.q, tfui.r)
+        a = np.array([[1.0, 0.0, 0.0, tfui.p],
+                      [0.0, 1.0, 0.0, tfui.q],
+                      [0.0, 0.0, 1.0, tfui.r],
+                      [0.0, 0.0, 0.0, 1.0]])
+        for c in self.coord:
+            b = np.array([c[0], c[1], c[2], 1.0])
+            prod = np.matmul(a, b)
+            self.tfcoord.append([prod[1], prod[2], prod[3]])
 
 
 
@@ -330,7 +342,14 @@ class Ui_MainWindow(object):
         self.setspeed()
         self.panda.open_gripper(wait = True)
         self.panda.hor_gripper(wait = True)
-        self.panda.pick([0.5, 0.0, 0.5], self.speed)
+        self.yolonode.tf()
+        objectchoice = str(self.comboBox.currentText())
+        for i in range(len(self.yolonode.name)):
+            if self.yolonode.name[i] == objectchoice:
+                self.panda.pick(self.yolonode.tfcoord[i], self.speed)
+                break
+
+
 
     def setspeed(self):
         if self.radioButton.isChecked():
