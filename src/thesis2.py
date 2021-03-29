@@ -28,7 +28,7 @@ from movegroup_interface import PandaMoveGroupInterface
 from extended_planning_scene_interface import ExtendedPlanningSceneInterface
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import utils
-import tfui
+# import tfui
 
 class YoloNode:
     def __init__(self, camera):
@@ -36,7 +36,7 @@ class YoloNode:
         self.pixelxmid = [0] * 5
         self.pixelymid = [0] * 5
         self.coord = [[0.0] * 3 for i in range(5)]
-        self.tfcoord = []
+        self.tfcoord = [[0.0] * 3 for i in range(5)]
         self.camera = camera
 
 
@@ -44,10 +44,12 @@ class YoloNode:
         boundingboxes = data.bounding_boxes
 
         for i in range(len(boundingboxes)):
-             self.name[i] = boundingboxes[i].Class
-             self.pixelxmid[i] = int((boundingboxes[i].xmin + boundingboxes[i].xmax) / 2)
-             self.pixelymid[i] = int((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
+            if i < 5:
+                self.name[i] = boundingboxes[i].Class
+                self.pixelxmid[i] = int((boundingboxes[i].xmin + boundingboxes[i].xmax) / 2)
+                self.pixelymid[i] = int((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
         self.resolveCoord()
+        # self.tf()
         # self.printCoord()
 
     def resolveCoord(self):
@@ -62,15 +64,16 @@ class YoloNode:
                 print(self.name[i] + ": " + " x: " + str(self.coord[i][0]) + " y: " + str(self.coord[i][1]) + " z: " + str(self.coord[i][2]))
 
     def tf(self):
-        print(tfui.p, tfui.q, tfui.r)
-        a = np.array([[1.0, 0.0, 0.0, tfui.p],
-                      [0.0, 1.0, 0.0, tfui.q],
-                      [0.0, 0.0, 1.0, tfui.r],
-                      [0.0, 0.0, 0.0, 1.0]])
-        for c in self.coord:
-            b = np.array([c[0], c[1], c[2], 1.0])
-            prod = np.matmul(a, b)
-            self.tfcoord.append([prod[1], prod[2], prod[3]])
+        p = -0.572096195764 - 0.296776682138443
+        q = 0.492800817518 - 0.33461353182792664
+        r = 0.242799191997 - 1.1790000200271606
+
+        # print(p, q, r)
+        for i in range(len(self.coord)):
+            x = self.coord[i][0] + p
+            y = self.coord[i][1] + q
+            z = self.coord[i][2] + r
+            self.tfcoord[i] = [x, y, z]
 
 
 
@@ -178,7 +181,7 @@ class Ui_MainWindow(object):
         self.pushButton_9.clicked.connect(self.pickobject)
         self.pushButton_12 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_12.setObjectName("pushButton_12")
-        # self.pushButton_12.clicked.connect(self.gethomejointvalues)
+        self.pushButton_12.clicked.connect(self.gethomejointvalues)
         self.splitter_3 = QtWidgets.QSplitter(self.centralwidget)
         self.splitter_3.setGeometry(QtCore.QRect(110, 480, 621, 21))
         self.splitter_3.setOrientation(QtCore.Qt.Horizontal)
@@ -197,6 +200,7 @@ class Ui_MainWindow(object):
         self.buttonGroup.addButton(self.radioButton_3)
         MainWindow.setCentralWidget(self.centralwidget)
         self.panda = PandaMoveGroupInterface()
+        self.pickflag = False
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
@@ -215,11 +219,11 @@ class Ui_MainWindow(object):
         # self.comboBox.setItemText(1, _translate("MainWindow", "Object 2"))
         # self.comboBox.setItemText(2, _translate("MainWindow", "Object 3"))
         self.pushButton_13.setText(_translate("MainWindow", "Horizontal Gripper"))
-        self.pushButton_14.setText(_translate("MainWindow", "Vertical Gripper"))
+        self.pushButton_14.setText(_translate("MainWindow", "Rotate Gripper"))
         self.pushButton_6.setText(_translate("MainWindow", "Open Gripper"))
         self.pushButton_7.setText(_translate("MainWindow", "Close Gripper"))
         self.pushButton_8.setText(_translate("MainWindow", "Load Objects"))
-        self.pushButton_9.setText(_translate("MainWindow", "Pick Selected Object"))
+        self.pushButton_9.setText(_translate("MainWindow", "Pick Object"))
         self.pushButton_12.setText(_translate("MainWindow", "Place"))
         self.radioButton.setText(_translate("MainWindow", "Slow"))
         self.radioButton_2.setText(_translate("MainWindow", "Medium"))
@@ -227,6 +231,8 @@ class Ui_MainWindow(object):
 
 
     def homebutton(self):
+        if self.pickflag == True:
+            self.pickflag = False
         jvposition = [1.634550363302231, -1.3411260843149029, 0.9899407725726057, -2.554722122957723, 0.9527293026895343,
                       1.4631178311427895, -0.26157099916206467]
 
@@ -241,7 +247,7 @@ class Ui_MainWindow(object):
         self.panda.open_gripper()
 
     def vert_orient(self):
-        self.panda.vert_gripper()
+        self.panda.rotate_gripper()
 
     def hor_orient(self):
         self.panda.hor_gripper()
@@ -327,8 +333,8 @@ class Ui_MainWindow(object):
 
     def loadobjects(self):
         self.comboBox.setEnabled(True)
+        self.comboBox.clear()
         self.comboBox.addItems(self.yolonode.name)
-        self.pushButton_8.setEnabled(False)
 
 
     def scanobjects(self):
@@ -339,17 +345,24 @@ class Ui_MainWindow(object):
             self.camera.publisher()
 
     def pickobject(self):
+        self.pickflag = True
         self.setspeed()
-        self.panda.open_gripper(wait = True)
-        self.panda.hor_gripper(wait = True)
         self.yolonode.tf()
+        self.panda.open_gripper(wait = True)
         objectchoice = str(self.comboBox.currentText())
         for i in range(len(self.yolonode.name)):
             if self.yolonode.name[i] == objectchoice:
+                print(self.yolonode.name[i])
+                print(self.yolonode.pixelxmid[i], self.yolonode.pixelymid[i])
+                print(self.yolonode.coord[i])
+                print(self.yolonode.tfcoord[i])
                 self.panda.pick(self.yolonode.tfcoord[i], self.speed)
                 break
-
-
+        self.panda.close_gripper(wait = True)
+        if self.panda.gripperorient == 2 or self.panda.gripperorient == 0:
+            self.moveup()
+        else:
+            self.moveforward()
 
     def setspeed(self):
         if self.radioButton.isChecked():
@@ -377,8 +390,9 @@ class Ui_MainWindow(object):
             rospy.loginfo("Constraint pole 1 could not be added!!")
 
     def gethomejointvalues(self):
-        joint_value = self.panda._arm_group.get_current_joint_values()
-        print(joint_value)
+        group = self.panda._arm_group
+        wpose = group.get_current_pose().pose
+        print(wpose)
 
 
 

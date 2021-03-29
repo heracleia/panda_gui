@@ -108,6 +108,7 @@ class PandaMoveGroupInterface:
             "Use group.set_end_effector_link() method to change default EE.".format(self._default_ee))
 
         self._arm_group.set_max_velocity_scaling_factor(0.3)
+        self.gripperorient = 0
 
 
     @property
@@ -251,7 +252,9 @@ class PandaMoveGroupInterface:
         self._gripper_group.set_named_target("open")
         return self._gripper_group.go(wait = wait)
 
-    def hor_gripper(self, wait = False):
+    def hor_gripper(self, wait = True):
+        if self.gripperorient == 0 or self.gripperorient == 2:
+            self.gripperorient = 1
         currpos = self._arm_group.get_current_pose().pose
         quat = quaternion_from_euler(0.0, -numpy.deg2rad(90.0), 0.0)
         currpos.orientation.x = quat[0]
@@ -265,9 +268,9 @@ class PandaMoveGroupInterface:
         self._arm_group.stop()
         self._arm_group.clear_pose_targets()
 
-    def vert_gripper(self, wait = False):
+    def vert_gripper(self, wait = True):
         currpos = self._arm_group.get_current_pose().pose
-        quat = quaternion_from_euler(0.0, numpy.deg2rad(180.0), 0.0)
+        quat = quaternion_from_euler(0.0, 0.0, numpy.deg2rad(180.0))
         currpos.orientation.x = quat[0]
         currpos.orientation.y = quat[1]
         currpos.orientation.z = quat[2]
@@ -279,15 +282,37 @@ class PandaMoveGroupInterface:
         self._arm_group.stop()
         self._arm_group.clear_pose_targets()
 
+    def rotate_gripper(self, wait = True):
+        if self.gripperorient == 0 or self.gripperorient == 1:
+            self.gripperorient = 2
+        currjoints = self._arm_group.get_current_joint_values()
+        currjoints[6] += numpy.deg2rad(90.0)
+        self.go_to_joint_positions(currjoints)
+        self._arm_group.stop()
+
     def pick(self, position, speed, wait = False):
+        waypoint = []
         currpos = self._arm_group.get_current_pose().pose
         xdiff = position[0] - currpos.position.x
         ydiff = position[1] - currpos.position.y
         zdiff = position[2] - currpos.position.z
-        currpos.position.x += xdiff
-        currpos.position.y += ydiff
-        currpos.position.z += zdiff
-        waypoint = []
+
+        if self.gripperorient == 0 or self.gripperorient == 2:
+            currpos.position.x += xdiff
+            currpos.position.y += ydiff
+            currpos.position.z += (zdiff + 0.1)
+            waypoint.append(copy.deepcopy(currpos))
+
+            currpos.position.z -= 0.1
+
+        else:
+            currpos.position.x += (xdiff + 0.1)
+            currpos.position.y += ydiff
+            currpos.position.z += zdiff
+            waypoint.append(copy.deepcopy(currpos))
+
+            currpos.position.x -= 0.1
+
         waypoint.append(copy.deepcopy(currpos))
 
         plan, fraction = self._arm_group.compute_cartesian_path(waypoint, speed, 0.0)
