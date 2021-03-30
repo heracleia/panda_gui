@@ -12,6 +12,7 @@ import copy
 import rospy
 import numpy as np
 import threading
+import tf
 from cv_bridge import CvBridge
 from darknet_ros_msgs.msg import BoundingBoxes
 import pyrealsense2 as rs
@@ -19,6 +20,7 @@ from sensor_msgs.msg import Image
 import moveit_commander
 import moveit_msgs.msg
 import geometry_msgs.msg
+from geometry_msgs.msg import PointStamped
 from math import pi
 from std_msgs.msg import String
 from darknet_ros_msgs.msg import BoundingBoxes
@@ -28,7 +30,15 @@ from movegroup_interface import PandaMoveGroupInterface
 from extended_planning_scene_interface import ExtendedPlanningSceneInterface
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import utils
+
 # import tfui
+
+
+laser_rostopic = "/robot/rear_laser/filtered_scan"
+intel_realsense_camera_tf = "camera_color_optical_frame"
+robot_base_tf = "robot_base_footprint"
+panda_tf = "world"
+
 
 class YoloNode:
     def __init__(self, camera):
@@ -38,7 +48,7 @@ class YoloNode:
         self.coord = [[0.0] * 3 for i in range(5)]
         self.tfcoord = [[0.0] * 3 for i in range(5)]
         self.camera = camera
-
+        self.listener = tf.TransformListener()
 
     def callback(self, data):
         boundingboxes = data.bounding_boxes
@@ -46,7 +56,7 @@ class YoloNode:
         for i in range(len(boundingboxes)):
             if i < 5:
                 self.name[i] = boundingboxes[i].Class
-                self.pixelxmid[i] = int((boundingboxes[i].xmin + boundingboxes[i].xmax) / 2)
+                self.pixelxmid[i] = int((boundingboxes[i].xmax + boundingboxes[i].xmin) / 2)
                 self.pixelymid[i] = int((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
         self.resolveCoord()
         # self.tf()
@@ -61,27 +71,35 @@ class YoloNode:
     def printCoord(self):
         for i in range(len(self.name)):
             if self.name[i] is not None:
-                print(self.name[i] + ": " + " x: " + str(self.coord[i][0]) + " y: " + str(self.coord[i][1]) + " z: " + str(self.coord[i][2]))
+                print(
+                    self.name[i]
+                    + ": "
+                    + " x: "
+                    + str(self.coord[i][0])
+                    + " y: "
+                    + str(self.coord[i][1])
+                    + " z: "
+                    + str(self.coord[i][2])
+                )
 
-    def tf(self):
-        p = -0.572096195764 - 0.296776682138443
-        q = 0.492800817518 - 0.33461353182792664
-        r = 0.242799191997 - 1.1790000200271606
-
-        # print(p, q, r)
+    def transform_point(self):
         for i in range(len(self.coord)):
-            x = self.coord[i][0] + p
-            y = self.coord[i][1] + q
-            z = self.coord[i][2] + r
-            self.tfcoord[i] = [x, y, z]
-
-
-
+            x, y, z = self.coord[i]
+            pointstamp = PointStamped()
+            pointstamp.header.frame_id = intel_realsense_camera_tf
+            pointstamp.header.stamp = rospy.Time()
+            pointstamp.point.x = x
+            pointstamp.point.y = y
+            pointstamp.point.z = z
+            transformed_stampedpoint = self.listener.transformPoint(panda_tf, pointstamp)
+            self.tfcoord[i][0] = transformed_stampedpoint.point.x - 0.08
+            self.tfcoord[i][1] = transformed_stampedpoint.point.y
+            self.tfcoord[i][2] = transformed_stampedpoint.point.z + 0.052
 
 
 class RealSenseNode:
     def __init__(self):
-        self.pub = rospy.Publisher('/camera/color/image_raw', Image, queue_size = 1)
+        self.pub = rospy.Publisher("/camera/color/image_raw", Image, queue_size=1)
         self.pipeline = rs.pipeline()
         self.config = rs.config()
         self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
@@ -105,7 +123,6 @@ class RealSenseNode:
         udist = self.depth_frame.get_distance(x, y)
         point1 = rs.rs2_deproject_pixel_to_point(color_intrin, [x, y], udist)
         return point1
-
 
 
 class Ui_MainWindow(object):
@@ -199,8 +216,13 @@ class Ui_MainWindow(object):
         self.radioButton_3.setObjectName("radioButton_3")
         self.buttonGroup.addButton(self.radioButton_3)
         MainWindow.setCentralWidget(self.centralwidget)
+
         self.panda = PandaMoveGroupInterface()
         self.pickflag = False
+        self.scene = ExtendedPlanningSceneInterface()
+
+        rospy.sleep(2)
+        self.loadconstraints()
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
@@ -229,16 +251,21 @@ class Ui_MainWindow(object):
         self.radioButton_2.setText(_translate("MainWindow", "Medium"))
         self.radioButton_3.setText(_translate("MainWindow", "Fast"))
 
-
     def homebutton(self):
-        if self.pickflag == True:
+        if self.pickflag is True:
             self.pickflag = False
-        jvposition = [1.634550363302231, -1.3411260843149029, 0.9899407725726057, -2.554722122957723, 0.9527293026895343,
-                      1.4631178311427895, -0.26157099916206467]
+        jvposition = [
+            1.634550363302231,
+            -1.3411260843149029,
+            0.9899407725726057,
+            -2.554722122957723,
+            0.9527293026895343,
+            1.4631178311427895,
+            -0.26157099916206467,
+        ]
 
-        self.panda._arm_group.go(jvposition, wait = True)
+        self.panda._arm_group.go(jvposition, wait=True)
         self.panda._arm_group.stop()
-
 
     def grasp(self):
         self.panda.close_gripper()
@@ -257,9 +284,9 @@ class Ui_MainWindow(object):
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
-        wpose.position.z += 0.1  # move up (z)
+        wpose.position.z += self.speed  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
 
     def movedown(self):
@@ -267,9 +294,9 @@ class Ui_MainWindow(object):
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
-        wpose.position.z -= 0.1  # move down (z)
+        wpose.position.z -= self.speed  # move down (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
 
     def moveright(self):
@@ -277,9 +304,9 @@ class Ui_MainWindow(object):
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
-        wpose.position.y += 0.1  # move up (z)
+        wpose.position.y += self.speed  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
 
     def moveleft(self):
@@ -287,9 +314,9 @@ class Ui_MainWindow(object):
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
-        wpose.position.y -= 0.1  # move up (z)
+        wpose.position.y -= self.speed  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
 
     def moveforward(self):
@@ -297,9 +324,9 @@ class Ui_MainWindow(object):
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
-        wpose.position.x += 0.1  # move up (z)
+        wpose.position.x += self.speed  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
 
     def movebackward(self):
@@ -307,9 +334,9 @@ class Ui_MainWindow(object):
         group = self.panda._arm_group
         wpose = group.get_current_pose().pose
         waypoint = []
-        wpose.position.x -= 0.1  # move up (z)
+        wpose.position.x -= self.speed  # move up (z)
         waypoint.append(copy.deepcopy(wpose))
-        plan, fraction = group.compute_cartesian_path(waypoint, self.speed, 0.0)
+        plan, fraction = group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
 
     def addscene(self):
@@ -320,11 +347,11 @@ class Ui_MainWindow(object):
         sizebox2 = [0.4, 0.2, 0.4]
         sizeobject = [0.02, 0.02, 0.2]
         stat = self.scene.add_box("box1", posebox1, sizebox1)
-        if(stat):
+        if stat:
             stat2 = self.scene.add_box("box2", posebox2, sizebox2)
-            if(stat2):
+            if stat2:
                 stat3 = self.scene.add_box("object1", objectpose, sizeobject)
-                if(stat3 == False):
+                if stat3 is False:
                     rospy.loginfo("Could not add object to scene!!")
             else:
                 rospy.loginfo("Could not add box2 to scene!!")
@@ -336,7 +363,6 @@ class Ui_MainWindow(object):
         self.comboBox.clear()
         self.comboBox.addItems(self.yolonode.name)
 
-
     def scanobjects(self):
         self.camera = RealSenseNode()
         self.yolonode = YoloNode(self.camera)
@@ -347,8 +373,9 @@ class Ui_MainWindow(object):
     def pickobject(self):
         self.pickflag = True
         self.setspeed()
-        self.yolonode.tf()
-        self.panda.open_gripper(wait = True)
+        self.yolonode.transform_point()
+        self.panda.open_gripper(wait=True)
+        rospy.sleep(0.5)
         objectchoice = str(self.comboBox.currentText())
         for i in range(len(self.yolonode.name)):
             if self.yolonode.name[i] == objectchoice:
@@ -356,38 +383,35 @@ class Ui_MainWindow(object):
                 print(self.yolonode.pixelxmid[i], self.yolonode.pixelymid[i])
                 print(self.yolonode.coord[i])
                 print(self.yolonode.tfcoord[i])
-                self.panda.pick(self.yolonode.tfcoord[i], self.speed)
+                self.panda.pick(self.yolonode.tfcoord[i])
                 break
         self.panda.close_gripper(wait = True)
-        if self.panda.gripperorient == 2 or self.panda.gripperorient == 0:
-            self.moveup()
-        else:
-            self.moveforward()
+        rospy.sleep(1)
+        self.moveup()
 
     def setspeed(self):
         if self.radioButton.isChecked():
             rbchoice = 0.01
         elif self.radioButton_2.isChecked():
-            rbchoice = 0.02
-        elif self.radioButton_3.isChecked():
             rbchoice = 0.03
+        elif self.radioButton_3.isChecked():
+            rbchoice = 0.05
         else:
             rospy.loginfo("Invalid panda speed set!!")
         self.speed = rbchoice
 
     def loadconstraints(self):
-        self.scene = ExtendedPlanningSceneInterface()
-        posepole1 = utils.create_pose_stamped_msg([-0.03, 0.3, 0.0], quaternion_from_euler(0.0, 0.0, 0.0))
-        posepole2 = utils.create_pose_stamped_msg([-0.03, -0.3, 0.0], quaternion_from_euler(0.0, 0.0, 0.0))
-        sizepole1 = [0.02, 0.02, 3.0]
-        sizepole2 = [0.02, 0.02, 3.0]
-        p1 = self.scene.add_box("pole1", posepole1, sizepole1)
-        if(p1):
-            p2 = self.scene.add_box("pole2", posepole2, sizepole2)
-            if(not p2):
-                rospy.loginfo("Constraint pole 2 could not be added!!")
-        else:
-            rospy.loginfo("Constraint pole 1 could not be added!!")
+        posepole = utils.create_pose_stamped_msg([0.55, 0.25, 0.3], quaternion_from_euler(0.0, 0.0, 0.0))
+        # posepole2 = utils.create_pose_stamped_msg([-0.03, -0.3, 0.0], quaternion_from_euler(0.0, 0.0, 0.0))
+        sizepole = [0.02, 0.02, 1.0]
+        # sizepole2 = [0.02, 0.02, 3.0]
+        p1 = self.scene.add_box("pole1", posepole, sizepole)
+        # if(p1):
+        #     p2 = scene.add_box("pole2", posepole2, sizepole2)
+        #     if(not p2):
+        #         rospy.loginfo("Constraint pole 2 could not be added!!")
+        if not p1:
+            rospy.loginfo("Camera pole could not be added!!")
 
     def gethomejointvalues(self):
         group = self.panda._arm_group
@@ -395,16 +419,13 @@ class Ui_MainWindow(object):
         print(wpose)
 
 
-
-
 if __name__ == "__main__":
-    import sys
     app = QtWidgets.QApplication(sys.argv)
     MainWindow = QtWidgets.QMainWindow()
     ui = Ui_MainWindow()
     ui.setupUi(MainWindow)
     MainWindow.show()
-    x = threading.Thread(target = ui.scanobjects)
+    x = threading.Thread(target=ui.scanobjects)
     x.setDaemon(True)
     x.start()
     sys.exit(app.exec_())

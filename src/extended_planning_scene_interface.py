@@ -34,8 +34,7 @@ class ExtendedPlanningSceneInterface(moveit_commander.PlanningSceneInterface):
    """
    def __init__(self):
 
-       moveit_commander.PlanningSceneInterface.__init__(self)
-
+        moveit_commander.PlanningSceneInterface.__init__(self)
 
    def add_box(self, name, pose, size, timeout = 5):
        """

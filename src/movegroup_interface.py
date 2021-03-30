@@ -49,8 +49,8 @@ def all_close(goal, actual, tolerance):
     """
     if isinstance(goal, list):
         for index, g in enumerate(goal):
-          if abs(actual[index] - g) > tolerance:
-            return False
+            if abs(actual[index] - g) > tolerance:
+                return False
 
     elif isinstance(goal, geometry_msgs.msg.PoseStamped):
         return all_close(goal.pose, actual.pose, tolerance)
@@ -62,7 +62,6 @@ def all_close(goal, actual, tolerance):
 
 
 class PandaMoveGroupInterface:
-
     def __init__(self):
 
         # try:
@@ -77,7 +76,7 @@ class PandaMoveGroupInterface:
         #     sys.exit()
 
         moveit_commander.roscpp_initialize(sys.argv)
-        rospy.init_node('movegroup_interface', anonymous=True)
+        rospy.init_node("movegroup_interface", anonymous=True)
 
         self._robot = moveit_commander.RobotCommander()
 
@@ -92,32 +91,36 @@ class PandaMoveGroupInterface:
             rospy.loginfo(("PandaMoveGroupInterface: could not detect gripper."))
             self._gripper_group = None
         except (socket.error, socket.gaierror):
-            print ("Failed to connect to the ROS parameter server!\n"
-           "Please check to make sure your ROS networking is "
-           "properly configured:\n")
+            print(
+                "Failed to connect to the ROS parameter server!\n"
+                "Please check to make sure your ROS networking is "
+                "properly configured:\n"
+            )
             sys.exit()
 
-        self._display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path',
-                                           moveit_msgs.msg.DisplayTrajectory,
-                                           queue_size=20)
+        self._display_trajectory_publisher = rospy.Publisher(
+            "/move_group/display_planned_path", moveit_msgs.msg.DisplayTrajectory, queue_size=20
+        )
 
-        self._default_ee = 'panda_hand' if self._gripper_group else 'panda_link8'
+        self._default_ee = "panda_hand" if self._gripper_group else "panda_link8"
         self._arm_group.set_end_effector_link(self._default_ee)
 
-        rospy.loginfo("PandaMoveGroupInterface: Setting default EE link to '{}' "
-            "Use group.set_end_effector_link() method to change default EE.".format(self._default_ee))
+        rospy.loginfo(
+            "PandaMoveGroupInterface: Setting default EE link to '{}' "
+            "Use group.set_end_effector_link() method to change default EE.".format(self._default_ee)
+        )
 
         self._arm_group.set_max_velocity_scaling_factor(0.3)
+        self._arm_group.set_max_acceleration_scaling_factor(0.2)
         self.gripperorient = 0
-
 
     @property
     def robot_state_interface(self):
         """
-            :getter: The RobotCommander instance of this object
-            :type: moveit_commander.RobotCommander
+        :getter: The RobotCommander instance of this object
+        :type: moveit_commander.RobotCommander
 
-            .. note:: For available methods for RobotCommander, refer `RobotCommander <http://docs.ros.org/jade/api/moveit_commander/html/classmoveit__commander_1_1robot_1_1RobotCommander.html>`_.
+        .. note:: For available methods for RobotCommander, refer `RobotCommander <http://docs.ros.org/jade/api/moveit_commander/html/classmoveit__commander_1_1robot_1_1RobotCommander.html>`_.
 
         """
         return self._robot
@@ -125,10 +128,10 @@ class PandaMoveGroupInterface:
     @property
     def scene(self):
         """
-            :getter: The PlanningSceneInterface instance for this robot. This is an interface
-                    to the world surrounding the robot
-            :type: franka_moveit.ExtendedPlanningSceneInterface
-            .. note:: For other available methods for planning scene interface, refer `PlanningSceneInterface <http://docs.ros.org/indigo/api/moveit_ros_planning_interface/html/classmoveit_1_1planning__interface_1_1PlanningSceneInterface.html>`_.
+        :getter: The PlanningSceneInterface instance for this robot. This is an interface
+                to the world surrounding the robot
+        :type: franka_moveit.ExtendedPlanningSceneInterface
+        .. note:: For other available methods for planning scene interface, refer `PlanningSceneInterface <http://docs.ros.org/indigo/api/moveit_ros_planning_interface/html/classmoveit_1_1planning__interface_1_1PlanningSceneInterface.html>`_.
         """
         return self._scene
 
@@ -154,31 +157,31 @@ class PandaMoveGroupInterface:
         """
         return self._gripper_group
 
-    def go_to_joint_positions(self, positions, wait = True, tolerance = 0.005):
+    def go_to_joint_positions(self, positions, wait=True, tolerance=0.005):
         """
-            :return: status of joint motion plan execution
-            :rtype: bool
-            :param positions: target joint positions (ordered)
-            :param wait: if True, function will wait for trajectory execution to complete
-            :param tolerance: maximum error in final position for each joint to consider
-             task a success
-            :type positions: [double]
-            :type wait: bool
-            :type tolerance: double
+        :return: status of joint motion plan execution
+        :rtype: bool
+        :param positions: target joint positions (ordered)
+        :param wait: if True, function will wait for trajectory execution to complete
+        :param tolerance: maximum error in final position for each joint to consider
+         task a success
+        :type positions: [double]
+        :type wait: bool
+        :type tolerance: double
         """
         self._arm_group.clear_pose_targets()
 
         rospy.logdebug("Starting positions: {}".format(self._arm_group.get_current_joint_values()))
 
-        self._arm_group.go(positions[:7], wait = wait)
+        self._arm_group.go(positions[:7], wait=wait)
 
         if len(positions) > 7:
-            self._gripper_group.go(positions[7:], wait = wait)
+            self._gripper_group.go(positions[7:], wait=wait)
 
         if wait:
             self._arm_group.stop()
             gripper_tolerance = True
-            if len(positions)> 7:
+            if len(positions) > 7:
                 self._gripper_group.stop()
                 gripper_tolerance = all_close(positions[7:], self._gripper_group.get_current_joint_values(), tolerance)
             return all_close(positions[:7], self._arm_group.get_current_joint_values(), tolerance) and gripper_tolerance
@@ -187,12 +190,12 @@ class PandaMoveGroupInterface:
 
     def plan_cartesian_path(self, poses):
         """
-            Plan cartesian path using the provided list of poses.
-            :param poses: The cartesian poses to be achieved in sequence.
-                (Use :func:`franka_moveit.utils.create_pose_msg` for creating pose messages easily)
-            :type poses: [geomentry_msgs.msg.Pose]
-            :return: the actual RobotTrajectory (can be used for :py:meth:`execute_plan`), a fraction of how much of the path was followed
-            :rtype: [RobotTrajectory, float (0,1)]
+        Plan cartesian path using the provided list of poses.
+        :param poses: The cartesian poses to be achieved in sequence.
+            (Use :func:`franka_moveit.utils.create_pose_msg` for creating pose messages easily)
+        :type poses: [geomentry_msgs.msg.Pose]
+        :return: the actual RobotTrajectory (can be used for :py:meth:`execute_plan`), a fraction of how much of the path was followed
+        :rtype: [RobotTrajectory, float (0,1)]
         """
         waypoints = []
         for pose in poses:
@@ -202,12 +205,12 @@ class PandaMoveGroupInterface:
 
         return plan, fraction
 
-    def set_velocity_scale(self, value, group = "arm"):
+    def set_velocity_scale(self, value, group="arm"):
         """
-            Set the max velocity scale for executing planned motion.
+        Set the max velocity scale for executing planned motion.
 
-            :param value: scale value (allowed (0,1] )
-            :type value: float
+        :param value: scale value (allowed (0,1] )
+        :type value: float
         """
         if group == "arm":
             self._arm_group.set_max_velocity_scaling_factor(value)
@@ -225,34 +228,33 @@ class PandaMoveGroupInterface:
         """
         return self._arm_group.plan(joint_position)
 
-
-    def close_gripper(self, wait = False):
+    def close_gripper(self, wait=False):
         """
-            Close gripper. (Using named states defined in urdf.)
-            :param wait: if set to True, blocks till execution is complete
-            :type wait: bool
-            .. note:: If this named state is not found, your ros environment is
-                probably not using the right panda_moveit_config package. Ensure
-                that sourced package is from this repo -->
-                https://github.com/justagist/panda_moveit_config
+        Close gripper. (Using named states defined in urdf.)
+        :param wait: if set to True, blocks till execution is complete
+        :type wait: bool
+        .. note:: If this named state is not found, your ros environment is
+            probably not using the right panda_moveit_config package. Ensure
+            that sourced package is from this repo -->
+            https://github.com/justagist/panda_moveit_config
         """
         self._gripper_group.set_named_target("close")
-        return self._gripper_group.go(wait = wait)
+        return self._gripper_group.go(wait=wait)
 
-    def open_gripper(self, wait = False):
+    def open_gripper(self, wait=False):
         """
-            Open gripper. (Using named states defined in urdf)
-            :param wait: if set to True, blocks till execution is complete
-            :type wait: bool
-            .. note:: If this named state is not found, your ros environment is
-                probably not using the right panda_moveit_config package. Ensure
-                that sourced package is from this repo -->
-                https://github.com/justagist/panda_moveit_config.
+        Open gripper. (Using named states defined in urdf)
+        :param wait: if set to True, blocks till execution is complete
+        :type wait: bool
+        .. note:: If this named state is not found, your ros environment is
+            probably not using the right panda_moveit_config package. Ensure
+            that sourced package is from this repo -->
+            https://github.com/justagist/panda_moveit_config.
         """
         self._gripper_group.set_named_target("open")
-        return self._gripper_group.go(wait = wait)
+        return self._gripper_group.go(wait=wait)
 
-    def hor_gripper(self, wait = True):
+    def hor_gripper(self, wait=True):
         if self.gripperorient == 0 or self.gripperorient == 2:
             self.gripperorient = 1
         currpos = self._arm_group.get_current_pose().pose
@@ -263,12 +265,12 @@ class PandaMoveGroupInterface:
         currpos.orientation.w = quat[3]
 
         self._arm_group.set_pose_target(currpos)
-        plan = self._arm_group.go(wait = wait)
+        plan = self._arm_group.go(wait=wait)
 
         self._arm_group.stop()
         self._arm_group.clear_pose_targets()
 
-    def vert_gripper(self, wait = True):
+    def vert_gripper(self, wait=True):
         currpos = self._arm_group.get_current_pose().pose
         quat = quaternion_from_euler(0.0, 0.0, numpy.deg2rad(180.0))
         currpos.orientation.x = quat[0]
@@ -277,12 +279,12 @@ class PandaMoveGroupInterface:
         currpos.orientation.w = quat[3]
 
         self._arm_group.set_pose_target(currpos)
-        plan = self._arm_group.go(wait = wait)
+        plan = self._arm_group.go(wait=wait)
 
         self._arm_group.stop()
         self._arm_group.clear_pose_targets()
 
-    def rotate_gripper(self, wait = True):
+    def rotate_gripper(self, wait=True):
         if self.gripperorient == 0 or self.gripperorient == 1:
             self.gripperorient = 2
         currjoints = self._arm_group.get_current_joint_values()
@@ -290,7 +292,7 @@ class PandaMoveGroupInterface:
         self.go_to_joint_positions(currjoints)
         self._arm_group.stop()
 
-    def pick(self, position, speed, wait = False):
+    def pick(self, position, wait=False):
         waypoint = []
         currpos = self._arm_group.get_current_pose().pose
         xdiff = position[0] - currpos.position.x
@@ -300,13 +302,13 @@ class PandaMoveGroupInterface:
         if self.gripperorient == 0 or self.gripperorient == 2:
             currpos.position.x += xdiff
             currpos.position.y += ydiff
-            currpos.position.z += (zdiff + 0.1)
+            currpos.position.z += zdiff
             waypoint.append(copy.deepcopy(currpos))
 
             currpos.position.z -= 0.1
 
         else:
-            currpos.position.x += (xdiff + 0.1)
+            currpos.position.x += xdiff
             currpos.position.y += ydiff
             currpos.position.z += zdiff
             waypoint.append(copy.deepcopy(currpos))
@@ -315,11 +317,8 @@ class PandaMoveGroupInterface:
 
         waypoint.append(copy.deepcopy(currpos))
 
-        plan, fraction = self._arm_group.compute_cartesian_path(waypoint, speed, 0.0)
+        plan, fraction = self._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.execute_plan(plan)
-
-
-
 
     def display_trajectory(self, plan):
         """
@@ -334,29 +333,29 @@ class PandaMoveGroupInterface:
         # Publish
         self._display_trajectory_publisher.publish(display_trajectory)
 
-    def move_to_neutral(self, wait = True):
+    def move_to_neutral(self, wait=True):
         """
-            Send arm group to neutral pose defined using named state in urdf.
-            :param wait: if set to True, blocks till execution is complete
-            :type wait: bool
+        Send arm group to neutral pose defined using named state in urdf.
+        :param wait: if set to True, blocks till execution is complete
+        :type wait: bool
         """
         self._arm_group.set_named_target("ready")
-        return self._arm_group.go(wait = wait)
+        return self._arm_group.go(wait=wait)
 
-    def execute_plan(self, plan, group = "arm", wait = True):
+    def execute_plan(self, plan, group="arm", wait=True):
         """
-            Execute the planned trajectory
-            :param plan: The plan to be executed (from :py:meth:`plan_joint_path` or
-                :py:meth:`plan_cartesian_path`)
-            :param group: The name of the move group (default "arm" for robot; use "hand"
-                for gripper group)
-            :type group: str
-            :param wait: if set to True, blocks till execution is complete
-            :type wait: bool
+        Execute the planned trajectory
+        :param plan: The plan to be executed (from :py:meth:`plan_joint_path` or
+            :py:meth:`plan_cartesian_path`)
+        :param group: The name of the move group (default "arm" for robot; use "hand"
+            for gripper group)
+        :type group: str
+        :param wait: if set to True, blocks till execution is complete
+        :type wait: bool
         """
         if group == "arm":
-            self._arm_group.execute(plan, wait = wait)
+            self._arm_group.execute(plan, wait=wait)
         elif group == "gripper":
-            self._gripper_group.execute(plan, wait = wait)
+            self._gripper_group.execute(plan, wait=wait)
         else:
             raise ValueError("PandaMoveGroupInterface: Invalid group specified!")
