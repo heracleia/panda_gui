@@ -39,6 +39,8 @@ intel_realsense_camera_tf = "camera_color_optical_frame"
 robot_base_tf = "robot_base_footprint"
 panda_tf = "world"
 
+placeposition = [-0.529092784633, -0.376418745152, 0.275439616317]
+
 
 class YoloNode:
     def __init__(self, camera):
@@ -46,9 +48,10 @@ class YoloNode:
         self.pixelxmid = [0] * 5
         self.pixelymid = [0] * 5
         self.coord = [[0.0] * 3 for i in range(5)]
-        self.tfcoord = [[0.0] * 3 for i in range(5)]
+        self.tfcoord = [0.0] * 3
         self.camera = camera
         self.listener = tf.TransformListener()
+        self.objecttop = [0.0] * 3
 
     def callback(self, data):
         boundingboxes = data.bounding_boxes
@@ -58,9 +61,12 @@ class YoloNode:
                 self.name[i] = boundingboxes[i].Class
                 self.pixelxmid[i] = int((boundingboxes[i].xmax + boundingboxes[i].xmin) / 2)
                 self.pixelymid[i] = int((boundingboxes[i].ymin + boundingboxes[i].ymax) / 2)
-        self.resolveCoord()
+        # self.resolveCoord()
         # self.tf()
         # self.printCoord()
+    def gettopcoord(self, index):
+        point = self.camera.deproject(self.pixelxmid[index], self.pixelymid[index])
+        self.objecttop = point
 
     def resolveCoord(self):
         for i in range(len(self.name)):
@@ -83,18 +89,18 @@ class YoloNode:
                 )
 
     def transform_point(self):
-        for i in range(len(self.coord)):
-            x, y, z = self.coord[i]
-            pointstamp = PointStamped()
-            pointstamp.header.frame_id = intel_realsense_camera_tf
-            pointstamp.header.stamp = rospy.Time()
-            pointstamp.point.x = x
-            pointstamp.point.y = y
-            pointstamp.point.z = z
-            transformed_stampedpoint = self.listener.transformPoint(panda_tf, pointstamp)
-            self.tfcoord[i][0] = transformed_stampedpoint.point.x - 0.08
-            self.tfcoord[i][1] = transformed_stampedpoint.point.y
-            self.tfcoord[i][2] = transformed_stampedpoint.point.z + 0.052
+        x, y, z = self.objecttop
+        pointstamp = PointStamped()
+        pointstamp.header.frame_id = intel_realsense_camera_tf
+        pointstamp.header.stamp = rospy.Time()
+        pointstamp.point.x = x
+        pointstamp.point.y = y
+        pointstamp.point.z = z
+        transformed_stampedpoint = self.listener.transformPoint(panda_tf, pointstamp)
+        self.tfcoord[0] = transformed_stampedpoint.point.x - 0.05
+        self.tfcoord[1] = transformed_stampedpoint.point.y + 0.01
+        self.tfcoord[2] = transformed_stampedpoint.point.z + 0.2
+
 
 
 class RealSenseNode:
@@ -198,7 +204,7 @@ class Ui_MainWindow(object):
         self.pushButton_9.clicked.connect(self.pickobject)
         self.pushButton_12 = QtWidgets.QPushButton(self.splitter_2)
         self.pushButton_12.setObjectName("pushButton_12")
-        self.pushButton_12.clicked.connect(self.gethomejointvalues)
+        self.pushButton_12.clicked.connect(self.place)
         self.splitter_3 = QtWidgets.QSplitter(self.centralwidget)
         self.splitter_3.setGeometry(QtCore.QRect(110, 480, 621, 21))
         self.splitter_3.setOrientation(QtCore.Qt.Horizontal)
@@ -220,6 +226,7 @@ class Ui_MainWindow(object):
         self.panda = PandaMoveGroupInterface()
         self.pickflag = False
         self.scene = ExtendedPlanningSceneInterface()
+        self.placeoffset = 0.0
 
         rospy.sleep(2)
         self.loadconstraints()
@@ -373,21 +380,49 @@ class Ui_MainWindow(object):
     def pickobject(self):
         self.pickflag = True
         self.setspeed()
-        self.yolonode.transform_point()
         self.panda.open_gripper(wait=True)
         rospy.sleep(0.5)
         objectchoice = str(self.comboBox.currentText())
         for i in range(len(self.yolonode.name)):
             if self.yolonode.name[i] == objectchoice:
+                self.yolonode.gettopcoord(i)
+                self.yolonode.transform_point()
                 print(self.yolonode.name[i])
                 print(self.yolonode.pixelxmid[i], self.yolonode.pixelymid[i])
-                print(self.yolonode.coord[i])
-                print(self.yolonode.tfcoord[i])
-                self.panda.pick(self.yolonode.tfcoord[i])
+                print(self.yolonode.objecttop)
+                print(self.yolonode.tfcoord)
+                self.panda.pick(self.yolonode.tfcoord)
                 break
-        self.panda.close_gripper(wait = True)
+        # self.panda.close_gripper(wait = True)
+        # rospy.sleep(1)
+        # self.moveup()
+    def place(self):
+        self.homebutton()
         rospy.sleep(1)
-        self.moveup()
+        waypoint = []
+        currpos = self.panda._arm_group.get_current_pose().pose
+        xdiff = placeposition[0] - currpos.position.x
+        ydiff = placeposition[1] - currpos.position.y
+        zdiff = placeposition[2] - currpos.position.z
+
+        currpos.position.x += xdiff
+        currpos.position.y += ydiff
+        currpos.position.z += (zdiff + 0.35)
+        waypoint.append(copy.deepcopy(currpos))
+
+        currpos.position.z -= (0.3 - self.placeoffset)
+        waypoint.append(copy.deepcopy(currpos))
+
+
+        plan, fraction = self.panda._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)
+        self.panda.execute_plan(plan)
+        rospy.sleep(0.5)
+        self.panda.open_gripper(wait = True)
+
+        self.placeoffset += 0.05
+
+
+
 
     def setspeed(self):
         if self.radioButton.isChecked():

@@ -110,8 +110,8 @@ class PandaMoveGroupInterface:
             "Use group.set_end_effector_link() method to change default EE.".format(self._default_ee)
         )
 
-        self._arm_group.set_max_velocity_scaling_factor(0.3)
-        self._arm_group.set_max_acceleration_scaling_factor(0.2)
+        self._arm_group.set_max_velocity_scaling_factor(0.2)
+        self._arm_group.set_max_acceleration_scaling_factor(0.15)
         self.gripperorient = 0
 
     @property
@@ -299,22 +299,13 @@ class PandaMoveGroupInterface:
         ydiff = position[1] - currpos.position.y
         zdiff = position[2] - currpos.position.z
 
-        if self.gripperorient == 0 or self.gripperorient == 2:
-            currpos.position.x += xdiff
-            currpos.position.y += ydiff
-            currpos.position.z += zdiff
-            waypoint.append(copy.deepcopy(currpos))
-
-            currpos.position.z -= 0.1
-
+        if self.gripperorient == 1:
+            currpos.position.x += (xdiff + 0.1)
         else:
             currpos.position.x += xdiff
-            currpos.position.y += ydiff
-            currpos.position.z += zdiff
-            waypoint.append(copy.deepcopy(currpos))
 
-            currpos.position.x -= 0.1
-
+        currpos.position.y += ydiff
+        currpos.position.z += zdiff
         waypoint.append(copy.deepcopy(currpos))
 
         plan, fraction = self._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)
