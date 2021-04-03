@@ -300,12 +300,14 @@ class PandaMoveGroupInterface:
         zdiff = position[2] - currpos.position.z
 
         if self.gripperorient == 1:
-            currpos.position.x += (xdiff + 0.1)
+            currpos.position.x += (xdiff + 0.15)
+            currpos.position.y += (ydiff - 0.02)
+            currpos.position.z += (zdiff - 0.15)
         else:
             currpos.position.x += xdiff
+            currpos.position.y += ydiff
+            currpos.position.z += zdiff
 
-        currpos.position.y += ydiff
-        currpos.position.z += zdiff
         waypoint.append(copy.deepcopy(currpos))
 
         plan, fraction = self._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)

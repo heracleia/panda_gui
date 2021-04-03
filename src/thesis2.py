@@ -182,10 +182,10 @@ class Ui_MainWindow(object):
         self.comboBox.setEnabled(False)
         self.pushButton_13 = QtWidgets.QPushButton(self.splitter)
         self.pushButton_13.setObjectName("pushButton_13")
-        self.pushButton_13.clicked.connect(self.hor_orient)
+        self.pushButton_13.clicked.connect(self.vert_orient)
         self.pushButton_14 = QtWidgets.QPushButton(self.splitter)
         self.pushButton_14.setObjectName("pushButton_14")
-        self.pushButton_14.clicked.connect(self.vert_orient)
+        self.pushButton_14.clicked.connect(self.hor_orient)
         self.pushButton_6 = QtWidgets.QPushButton(self.splitter)
         self.pushButton_6.setObjectName("pushButton_6")
         self.pushButton_6.clicked.connect(self.release)
@@ -247,8 +247,8 @@ class Ui_MainWindow(object):
         # self.comboBox.setItemText(0, _translate("MainWindow", "Object 1"))
         # self.comboBox.setItemText(1, _translate("MainWindow", "Object 2"))
         # self.comboBox.setItemText(2, _translate("MainWindow", "Object 3"))
-        self.pushButton_13.setText(_translate("MainWindow", "Horizontal Gripper"))
-        self.pushButton_14.setText(_translate("MainWindow", "Rotate Gripper"))
+        self.pushButton_13.setText(_translate("MainWindow", "Rotate Gripper"))
+        self.pushButton_14.setText(_translate("MainWindow", "Horizontal Gripper"))
         self.pushButton_6.setText(_translate("MainWindow", "Open Gripper"))
         self.pushButton_7.setText(_translate("MainWindow", "Close Gripper"))
         self.pushButton_8.setText(_translate("MainWindow", "Load Objects"))
@@ -270,7 +270,7 @@ class Ui_MainWindow(object):
             1.4631178311427895,
             -0.26157099916206467,
         ]
-
+        self.panda.gripperorient = 0
         self.panda._arm_group.go(jvposition, wait=True)
         self.panda._arm_group.stop()
 
@@ -281,9 +281,11 @@ class Ui_MainWindow(object):
         self.panda.open_gripper()
 
     def vert_orient(self):
+        #self.homebutton()
         self.panda.rotate_gripper()
 
     def hor_orient(self):
+        #self.homebutton()
         self.panda.hor_gripper()
 
     def moveup(self):
@@ -393,11 +395,18 @@ class Ui_MainWindow(object):
                 print(self.yolonode.tfcoord)
                 self.panda.pick(self.yolonode.tfcoord)
                 break
+        self.pickorient = self.panda.gripperorient
         # self.panda.close_gripper(wait = True)
         # rospy.sleep(1)
         # self.moveup()
     def place(self):
-        self.homebutton()
+        if self.pickorient == 1:
+            self.hor_orient()
+        if self.pickorient == 2:
+            self.homebutton()
+            self.vert_orient()
+        if self.pickorient == 0:
+            self.homebutton()
         rospy.sleep(1)
         waypoint = []
         currpos = self.panda._arm_group.get_current_pose().pose
@@ -405,14 +414,22 @@ class Ui_MainWindow(object):
         ydiff = placeposition[1] - currpos.position.y
         zdiff = placeposition[2] - currpos.position.z
 
-        currpos.position.x += xdiff
-        currpos.position.y += ydiff
-        currpos.position.z += (zdiff + 0.35)
-        waypoint.append(copy.deepcopy(currpos))
+        if self.pickorient == 1:
+            currpos.position.x += xdiff
+            currpos.position.y += ydiff
+            currpos.position.z += (zdiff + 0.35)
+            #waypoint.append(copy.deepcopy(currpos))
 
-        currpos.position.z -= (0.3 - self.placeoffset)
-        waypoint.append(copy.deepcopy(currpos))
+            #currpos.position.z -= (0.3 - self.placeoffset)
+        else:
+            currpos.position.x += xdiff
+            currpos.position.y += ydiff
+            currpos.position.z += (zdiff + 0.35)
+            waypoint.append(copy.deepcopy(currpos))
 
+            currpos.position.z -= (0.3 - self.placeoffset)
+
+        waypoint.append(copy.deepcopy(currpos))
 
         plan, fraction = self.panda._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
@@ -420,6 +437,8 @@ class Ui_MainWindow(object):
         self.panda.open_gripper(wait = True)
 
         self.placeoffset += 0.05
+        if self.placeoffset == 0.15:
+            self.placeoffset = 0
 
 
 
