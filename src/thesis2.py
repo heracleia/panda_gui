@@ -21,11 +21,15 @@ import moveit_commander
 import moveit_msgs.msg
 import geometry_msgs.msg
 from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import Twist
 from math import pi
 from std_msgs.msg import String
 from darknet_ros_msgs.msg import BoundingBoxes
 from moveit_commander.conversions import pose_to_list
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtGui import *
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
 from movegroup_interface import PandaMoveGroupInterface
 from extended_planning_scene_interface import ExtendedPlanningSceneInterface
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
@@ -41,6 +45,40 @@ panda_tf = "world"
 
 placeposition = [-0.529092784633, -0.376418745152, 0.275439616317]
 
+class SummitNode:
+    def __init__(self):
+        self.pub = rospy.Publisher("/robot/robotnik_base_control/cmd_vel", Twist, queue_size=10)
+        self.twistmsg = Twist()
+        self.stop()
+
+    def moveforward(self):
+        self.stop()
+        self.twistmsg.linear.x = -0.05
+        self.pub.publish(self.twistmsg)
+
+    def movebackward(self):
+        self.stop()
+        self.twistmsg.linear.x = 0.05
+        self.pub.publish(self.twistmsg)
+
+    def moveleft(self):
+        self.stop()
+        self.twistmsg.linear.y = -0.05
+        self.pub.publish(self.twistmsg)
+        
+    def moveright(self):
+        self.stop()
+        self.twistmsg.linear.y = 0.05
+        self.pub.publish(self.twistmsg)
+
+    def stop(self):
+        self.twistmsg.linear.x = 0.0
+        self.twistmsg.linear.y = 0.0
+        self.twistmsg.linear.z = 0.0
+        self.twistmsg.angular.x = 0.0
+        self.twistmsg.angular.y = 0.0
+        self.twistmsg.angular.z = 0.0
+        self.pub.publish(self.twistmsg)
 
 class YoloNode:
     def __init__(self, camera):
@@ -224,6 +262,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
 
         self.panda = PandaMoveGroupInterface()
+        self.summit = SummitNode()
         self.pickflag = False
         self.scene = ExtendedPlanningSceneInterface()
         self.placeoffset = 0.0
@@ -433,6 +472,7 @@ class Ui_MainWindow(object):
 
         plan, fraction = self.panda._arm_group.compute_cartesian_path(waypoint, 0.01, 0.0)
         self.panda.execute_plan(plan)
+
         rospy.sleep(0.5)
         self.panda.open_gripper(wait = True)
 
@@ -473,12 +513,42 @@ class Ui_MainWindow(object):
         print(wpose)
 
 
+class MainWindow(QMainWindow, Ui_MainWindow):
+    def __init__(self, parent=None):
+        QMainWindow.__init__(self, parent = parent)
+        self.setupUi(self)
+
+    # override the key press event
+    def keyPressEvent(self, event):
+        # if up arrow key is pressed
+        if event.key() == Qt.Key_W:
+            self.summit.moveforward()
+            print("up")
+
+        # if down arrow key is pressed
+        elif event.key() == Qt.Key_S:
+            self.summit.movebackward()
+            print("down")
+
+        # if left arrow key is pressed
+        elif event.key() == Qt.Key_A:
+            self.summit.moveleft()
+            print("left")
+
+        # if right arrow key is pressed
+        elif event.key() == Qt.Key_D:
+            self.summit.moveright()
+            print("right")
+
+        else:
+            print("stop")
+            self.summit.stop()
+
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui = Ui_MainWindow()
-    ui.setupUi(MainWindow)
-    MainWindow.show()
+    ui = MainWindow()
+    ui.show()
     x = threading.Thread(target=ui.scanobjects)
     x.setDaemon(True)
     x.start()
